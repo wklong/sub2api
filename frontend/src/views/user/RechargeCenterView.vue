@@ -5,6 +5,38 @@
         <h1 class="text-2xl font-semibold text-gray-900 dark:text-white">{{ t('payment.rechargeCenter.title') }}</h1>
       </header>
 
+      <p v-if="loadError" role="alert" class="text-sm text-red-600 dark:text-red-400">{{ t('payment.rechargeCenter.configError') }}</p>
+
+      <div class="grid gap-6 lg:grid-cols-2">
+        <section class="rounded-lg border border-gray-200 bg-white p-5 dark:border-dark-700 dark:bg-dark-800" aria-labelledby="recharge-entry-title">
+          <h2 id="recharge-entry-title" class="text-lg font-semibold text-gray-900 dark:text-white">{{ t('payment.rechargeCenter.entry') }}</h2>
+          <p v-if="loading" role="status" class="mt-5 text-sm text-gray-500">{{ t('common.loading') }}</p>
+          <div v-else class="mt-5 space-y-4">
+            <div v-for="store in stores" :key="store.key">
+              <p class="mb-2 text-xs font-medium" :class="store.key === 'primary' ? 'text-primary-700 dark:text-primary-300' : 'text-gray-500 dark:text-gray-400'">{{ t(store.key === 'primary' ? 'payment.rechargeCenter.primaryHint' : 'payment.rechargeCenter.backupHint') }}</p>
+              <a v-if="safeUrl(store.url)" :href="safeUrl(store.url)" target="_blank" rel="noopener noreferrer" class="btn inline-flex min-h-14 w-full items-center justify-center text-base transition duration-200 hover:-translate-y-0.5 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary-500" :class="store.key === 'primary' ? 'btn-primary shadow-md hover:shadow-lg' : 'btn-secondary hover:border-primary-300'">
+                {{ t(store.title) }}
+              </a>
+              <p v-else class="rounded-lg border border-dashed border-gray-200 px-4 py-3 text-center text-sm text-gray-500 dark:border-dark-600 dark:text-gray-400">{{ t(store.title) }} · {{ t('payment.rechargeCenter.unavailable') }}</p>
+            </div>
+          </div>
+        </section>
+
+        <section class="rounded-lg border border-gray-200 bg-white p-5 dark:border-dark-700 dark:bg-dark-800" aria-labelledby="store-order-lookup-title">
+          <h2 id="store-order-lookup-title" class="text-lg font-semibold text-gray-900 dark:text-white">{{ t('payment.rechargeCenter.orderLookup') }}</h2>
+          <p class="mt-2 text-sm leading-6 text-gray-500 dark:text-gray-400">{{ t('payment.rechargeCenter.orderHint') }}</p>
+          <div class="mt-5 space-y-5">
+            <div v-for="store in orderStores" :key="store.key" class="border-t border-gray-100 pt-4 dark:border-dark-700">
+              <h3 class="text-sm font-medium text-gray-800 dark:text-gray-200">{{ t(store.title) }}</h3>
+              <a v-if="safeUrl(store.url)" :href="safeUrl(store.url)" target="_blank" rel="noopener noreferrer" class="btn mt-3 inline-flex min-h-12 w-full items-center justify-center gap-2 transition duration-200 hover:-translate-y-0.5 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary-500" :class="store.key === 'primary' ? 'border border-primary-200 bg-primary-50 text-primary-700 hover:bg-primary-100 dark:border-primary-800 dark:bg-primary-950/40 dark:text-primary-300 dark:hover:bg-primary-900/50' : 'btn-secondary'">
+                {{ t(store.title) }} <Icon name="externalLink" size="sm" />
+              </a>
+              <p v-else class="mt-3 text-sm text-gray-500 dark:text-gray-400">{{ t('payment.rechargeCenter.unavailable') }}</p>
+            </div>
+          </div>
+        </section>
+      </div>
+
       <div class="grid gap-6 lg:grid-cols-2">
         <section class="rounded-lg border border-amber-300 bg-amber-50 p-5 text-amber-950 dark:border-amber-600/50 dark:bg-amber-950/30 dark:text-amber-100" aria-labelledby="recharge-guide-title">
           <h2 id="recharge-guide-title" class="flex items-center gap-2 text-lg font-semibold">
@@ -35,35 +67,6 @@
             </li>
           </ol>
         </div>
-      </div>
-
-      <p v-if="loadError" role="alert" class="text-sm text-red-600 dark:text-red-400">{{ t('payment.rechargeCenter.configError') }}</p>
-
-      <div class="grid gap-6 lg:grid-cols-2">
-        <p v-if="loading" role="status" class="text-sm text-gray-500">{{ t('common.loading') }}</p>
-        <section v-else class="grid gap-4" :aria-label="t('payment.rechargeCenter.title')">
-          <article v-for="store in stores" :key="store.key" class="flex flex-col justify-center rounded-lg border border-gray-200 bg-white p-5 dark:border-dark-700 dark:bg-dark-800">
-            <h2 class="text-lg font-semibold text-gray-900 dark:text-white">{{ t(store.title) }}</h2>
-            <a v-if="safeUrl(store.url)" :href="safeUrl(store.url)" target="_blank" rel="noopener noreferrer" class="btn mt-4 inline-flex w-full items-center justify-center gap-2" :class="store.key === 'primary' ? 'btn-primary' : 'btn-secondary'">
-              {{ t('payment.rechargeCenter.openStore', { name: storeName(store.url) }) }} <Icon name="externalLink" size="sm" />
-            </a>
-            <p v-else class="mt-4 text-sm text-gray-500 dark:text-gray-400">{{ t('payment.rechargeCenter.unavailable') }}</p>
-          </article>
-        </section>
-
-        <section class="rounded-lg border border-gray-200 bg-white p-5 dark:border-dark-700 dark:bg-dark-800" aria-labelledby="store-order-lookup-title">
-          <h2 id="store-order-lookup-title" class="text-lg font-semibold text-gray-900 dark:text-white">{{ t('payment.rechargeCenter.orderLookup') }}</h2>
-          <p class="mt-2 text-sm leading-6 text-gray-500 dark:text-gray-400">{{ t('payment.rechargeCenter.orderHint') }}</p>
-          <div class="mt-5 space-y-5">
-            <div v-for="store in orderStores" :key="store.key" class="border-t border-gray-100 pt-4 dark:border-dark-700">
-              <h3 class="text-sm font-medium text-gray-800 dark:text-gray-200">{{ t(store.title) }}</h3>
-              <a v-if="safeUrl(store.url)" :href="safeUrl(store.url)" target="_blank" rel="noopener noreferrer" class="btn btn-secondary mt-3 inline-flex w-full items-center justify-center gap-2">
-                {{ t(store.title) }} <Icon name="externalLink" size="sm" />
-              </a>
-              <p v-else class="mt-3 text-sm text-gray-500 dark:text-gray-400">{{ t('payment.rechargeCenter.unavailable') }}</p>
-            </div>
-          </div>
-        </section>
       </div>
     </main>
   </AppLayout>
@@ -105,11 +108,6 @@ function safeUrl(value?: string) {
   if (!sanitized) return ''
   const parsed = new URL(sanitized)
   return parsed.username || parsed.password ? '' : sanitized
-}
-
-function storeName(value?: string) {
-  const url = safeUrl(value)
-  return url ? new URL(url).hostname.replace(/^www\./i, '') : ''
 }
 
 onMounted(async () => {

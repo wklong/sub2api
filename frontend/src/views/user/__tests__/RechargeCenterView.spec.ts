@@ -7,9 +7,10 @@ vi.mock('@/api/payment', () => ({ paymentAPI: { getConfig } }))
 vi.mock('vue-i18n', async () => ({
   ...await vi.importActual<typeof import('vue-i18n')>('vue-i18n'),
   useI18n: () => ({
-    t: (key: string, params?: { name: string }) => key === 'payment.rechargeCenter.openStore'
-      ? `前往 ${params?.name} 店铺`
-      : key,
+    t: (key: string) => ({
+      'payment.rechargeCenter.primary': '主充值入口',
+      'payment.rechargeCenter.backup': '备用充值入口',
+    } as Record<string, string>)[key] || key,
   }),
 }))
 
@@ -41,16 +42,16 @@ describe('RechargeCenterView', () => {
     expect(wrapper.find('form').exists()).toBe(false)
   })
 
-  it.each([
-    ['https://catfk.com/shop/123', 'catfk.com'],
-    ['https://www.wzyp.cn/shop/456', 'wzyp.cn'],
-    ['https://shop.example:8443/product?name=FakeStore', 'shop.example'],
-  ])('uses the hostname from %s in the store button', async (url, name) => {
-    getConfig.mockResolvedValue({ data: { recharge_primary_url: url } })
+  it('labels the two recharge buttons by priority while preserving their destinations', async () => {
+    getConfig.mockResolvedValue({ data: urls })
     const wrapper = mountView()
     await flushPromises()
-    expect(wrapper.get('a').text()).toBe(`前往 ${name} 店铺`)
-    expect(wrapper.get('a').attributes('href')).toBe(url)
+    const links = wrapper.get('[aria-labelledby="recharge-entry-title"]').findAll('a')
+    expect(links.map(link => link.text())).toEqual(['主充值入口', '备用充值入口'])
+    expect(links.map(link => link.attributes('href'))).toEqual([
+      urls.recharge_primary_url,
+      urls.recharge_backup_url,
+    ])
   })
 
   it('disables absent and unsafe links and sanitizes the guide', async () => {
