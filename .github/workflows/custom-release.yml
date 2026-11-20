@@ -2,9 +2,11 @@ name: Custom Image Release
 
 on:
   push:
+    branches:
+      - main
     tags:
       - 'v*-custom.*'
-  # 从所选分支验证构建，不推送镜像；正式发布只能通过自有标签触发。
+  # 从所选分支验证构建，不推送镜像；main 推送和自有版本标签触发上传。
   workflow_dispatch:
 
 concurrency:
@@ -44,7 +46,10 @@ jobs:
           publish=false
           tag="sha-${SOURCE_SHA}"
           version="0.0.0-dev.${SOURCE_SHA:0:12}"
-          if [[ "$EVENT_NAME" == push && "$REF_TYPE" == tag ]]; then
+          if [[ "$EVENT_NAME" == push && "$REF_TYPE" == branch && "$REF_NAME" == main ]]; then
+            publish=true
+            tag=main
+          elif [[ "$EVENT_NAME" == push && "$REF_TYPE" == tag ]]; then
             if [[ ! "$REF_NAME" =~ ^v[0-9]+\.[0-9]+\.[0-9]+-custom\.[1-9][0-9]*$ ]]; then
               echo '::error::发布标签必须符合 vX.Y.Z-custom.N，N 为正整数'
               exit 1
@@ -62,7 +67,7 @@ jobs:
           } >> "$GITHUB_OUTPUT"
 
       - name: 确认发布提交已进入默认分支
-        if: steps.release.outputs.publish == 'true'
+        if: github.ref_type == 'tag' && steps.release.outputs.publish == 'true'
         shell: bash
         env:
           DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
