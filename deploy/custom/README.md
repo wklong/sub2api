@@ -9,6 +9,26 @@ Compose 通过 `extends` 复用 `../docker-compose.yml` 的应用、PostgreSQL�
 
 ## 一、发布自己的镜像
 
+### main 自动构建
+
+推送到 main 后，GitHub Actions 自动构建并上传 ghcr.io/wklong/sub2api，
+提供 main 滚动标签和 sha-<完整提交哈希> 固定标签。推送 test 分支不会发布镜像。
+手动运行仍只验证构建。等待 Actions 成功后，在服务器 deploy/custom/.env 中
+设置 SUB2API_VERSION=main，然后执行：
+
+~~~sh
+sh deploy/custom/deploy.sh check
+sh deploy/custom/deploy.sh up
+sh deploy/custom/deploy.sh status
+~~~
+
+每次 main 构建成功后重新执行 up，脚本先拉取镜像，再以 --no-build 重建容器
+并等待健康检查。服务器无需源码编译，只需保留基础 Compose、deploy/custom
+及 .env 的相对目录结构。生产建议使用 sha-<完整提交哈希> 或正式版本标签，
+方便定位和恢复版本；main 会持续变化。构建或上传失败时不要更新服务器。
+
+### 正式版本标签发布
+
 1. 将这些配置通过 PR 合并到自己的默认分支，并确认现有 CI 通过。
 2. 在 GitHub 仓库 Actions 页面启用工作流。手动运行 `Custom Image Release`
    只验证当前所选分支的构建，不上传镜像；工作流合并到默认分支后才会显示手动入口。
@@ -24,7 +44,7 @@ git push origin v0.2.23-custom.1
 标签必须符合 `vX.Y.Z-custom.N`，其中 N 是从 1 开始的修订号。
 发布流程会检查标签提交属于默认分支，并构建完整前后端镜像。
 成功后上传两个标签：完整版本标签，以及 `sha-<完整提交哈希>`。
-不自动更新 `latest`，不创建 GitHub Release 或上传独立二进制。
+main 构建更新 `main`；正式版本发布不更新 `main`，不自动更新 `latest`，不创建 GitHub Release 或上传独立二进制。
 已发布标签不要移动或复用，修复后递增自有修订号。
 
 GHCR 上传使用工作流内置的 `GITHUB_TOKEN`，无需添加个人令牌。

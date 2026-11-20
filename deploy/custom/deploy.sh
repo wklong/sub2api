@@ -44,7 +44,7 @@ case "$action" in
         if [ "$pull_images" = true ]; then
             compose pull
         fi
-        compose up -d --wait --wait-timeout 300
+        compose up -d --no-build --wait --wait-timeout 300
         compose ps
         ;;
     status) compose ps ;;
