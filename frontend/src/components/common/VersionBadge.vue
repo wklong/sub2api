@@ -10,7 +10,7 @@
             ? 'bg-amber-100 text-amber-700 hover:bg-amber-200 dark:bg-amber-900/30 dark:text-amber-400 dark:hover:bg-amber-900/50'
             : 'bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-dark-800 dark:text-dark-400 dark:hover:bg-dark-700'
         ]"
-        :title="hasUpdate ? t('version.updateAvailable') : t('version.upToDate')"
+        :title="appStore.versionInfo?.warning || (hasUpdate ? t('version.updateAvailable') : t('version.upToDate'))"
       >
         <span v-if="currentVersion" class="font-medium">v{{ currentVersion }}</span>
         <span
@@ -77,6 +77,11 @@
             </div>
 
             <!-- Content -->
+            <ContainerUpdatePanel
+              v-else-if="appStore.versionInfo?.update_mode === 'container'"
+              :info="appStore.versionInfo"
+              @refreshed="refreshVersion(true)"
+            />
             <template v-else>
               <!-- Version display - centered and prominent -->
               <div class="mb-4 text-center">
@@ -650,6 +655,7 @@ import {
 } from '@/api/admin/system'
 import { useClipboard } from '@/composables/useClipboard'
 import Icon from '@/components/icons/Icon.vue'
+import ContainerUpdatePanel from './ContainerUpdatePanel.vue'
 
 const GITHUB_REPO = 'Wei-Shaw/sub2api'
 // Docker Hub image published by CI (tags carry no "v" prefix, e.g. weishaw/sub2api:0.1.146)

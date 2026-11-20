@@ -36,6 +36,7 @@ export const useAppStore = defineStore('app', () => {
   let publicSettingsRequest: Promise<PublicSettings | null> | null = null
 
   // Version cache state
+  const versionInfo = ref<VersionInfo | null>(null)
   const versionLoaded = ref<boolean>(false)
   const versionLoading = ref<boolean>(false)
   const currentVersion = ref<string>('')
@@ -244,6 +245,7 @@ export const useAppStore = defineStore('app', () => {
     // Return cached data if available and not forcing refresh
     if (versionLoaded.value && !force) {
       return {
+        ...versionInfo.value,
         current_version: currentVersion.value,
         latest_version: latestVersion.value,
         has_update: hasUpdate.value,
@@ -261,6 +263,7 @@ export const useAppStore = defineStore('app', () => {
     versionLoading.value = true
     try {
       const data = await checkUpdatesAPI(force)
+      versionInfo.value = data
       currentVersion.value = data.current_version
       latestVersion.value = data.latest_version
       hasUpdate.value = data.has_update
@@ -456,6 +459,7 @@ export const useAppStore = defineStore('app', () => {
     cachedPublicSettings,
 
     // Version state
+    versionInfo,
     versionLoaded,
     versionLoading,
     currentVersion,

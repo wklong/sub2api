@@ -13,7 +13,7 @@ Compose 通过 `extends` 复用 `../docker-compose.yml` 的应用、PostgreSQL�
 
 推送到 main 后，GitHub Actions 自动构建并上传 ghcr.io/wklong/sub2api，
 提供 main 滚动标签和 sha-<完整提交哈希> 固定标签。推送 test 分支不会发布镜像。
-手动运行仍只验证构建。等待 Actions 成功后，在服务器 deploy/custom/.env 中
+手动运行默认只验证构建；仅在 main 分支勾选 publish_main 时重新发布 main 镜像。等待 Actions 成功后，在服务器 deploy/custom/.env 中
 设置 SUB2API_VERSION=main，然后执行：
 
 ~~~sh
@@ -31,7 +31,7 @@ sh deploy/custom/deploy.sh status
 
 1. 将这些配置通过 PR 合并到自己的默认分支，并确认现有 CI 通过。
 2. 在 GitHub 仓库 Actions 页面启用工作流。手动运行 `Custom Image Release`
-   只验证当前所选分支的构建，不上传镜像；工作流合并到默认分支后才会显示手动入口。
+   默认只验证当前所选分支的构建；仅 main 分支勾选 publish_main 时允许补发镜像。
 3. 为已合并的提交创建自己的版本标签。下面是示例，发布前替换版本号：
 
 ```sh
@@ -123,9 +123,74 @@ PostgreSQL 和 Redis 不向宿主机暴露端口。
 保留错误日志供排查；脚本失败不会自动回滚。已有数据库迁移时，改回旧镜像不一定兼容，
 需要结合旧部署配置和已验证的数据库备份恢复。
 
-**不要使用后台“在线更新”安装程序。** 当前应用的在线更新目标固定为
-`Wei-Shaw/sub2api`，会下载上游二进制，可能覆盖自己的功能。本部署通过重新拉取
-自有镜像更新，当前工作流也不发布供在线更新使用的二进制资源。
+旧版后台在线更新会下载上游二进制，不适用于自有部署。新版镜像使用容器升级模式，
+只通过下述宿主机升级服务安装自有镜像；升级器未安装时显示提示，禁止回退到上游二进制。
 
 可选配置名称参考 `../.env.example`，实际可传递项以基础 Compose 的
 `environment` 为准；仅在 `.env` 添加任意变量不代表它会自动进入应用容器。
+
+
+## 四、后台按钮升级自己的最新版本
+
+适用于 Linux amd64、Docker Compose v2、systemd、Python 3.9 及更新版本。
+目标为本仓库 main **已成功构建且 GHCR 清单实际存在**的最新版本；不读取 Git 标签列表推测镜像。
+首次上线需手动部署包含该功能的镜像，并安装一次升级服务。旧实例需先按第三节确认原数据卷和备份。
+
+在仓库根目录执行（先完成数据库备份，并确认 deploy/custom/.env 指向正确项目）：
+
+~~~sh
+sudo sh deploy/custom/updater/install.sh
+sh deploy/custom/deploy.sh check
+sh deploy/custom/deploy.sh up
+~~~
+
+在管理员后台点击版本号，刷新版本，核对当前提交、目标提交、构建时间，点击升级并确认。
+页面依次显示排队、拉取、重建和健康检查；短暂断线后自动重连。
+普通用户无法调用管理员升级和状态接口。应用仅挂载专用 Unix socket，不挂载 Docker socket。
+socket 仅允许 root 和 GID 1000 使用，应用镜像使用 GID 1000；不要将升级器端口暴露到公网。
+
+升级器只接受固定仓库、已验证的提交及摘要，不接受任意镜像、命令、路径或 Compose 服务。
+它固定镜像摘要，只重建 sub2api 服务，保留 PostgreSQL、Redis 和命名卷。
+在线升级会生成本地 online-image.json，deploy.sh 自动加载它，后续重启保持已安装的摘要。
+因此在线升级后 .env 的 SUB2API_VERSION 不代表最终实际镜像；以覆盖文件和运行容器为准。
+手动切换版本时先停止升级服务，确认无任务执行，备份并移走 online-image.json，
+再修改 .env 并执行 check/up，完成后重新启动升级服务。
+
+升级前镜像引用、固定本地镜像 ID 及任务状态保存在 /var/lib/sub2api-updater/status.json；旧覆盖配置保存在
+/var/lib/sub2api-updater/previous-image.json（如升级前存在）。拉取失败不会重建应用。
+启动或健康检查失败时不自动回滚，因为数据库迁移可能已经执行。按第三节评估数据库兼容性后恢复。
+如果新版应用无法启动，后台接口也无法返回任务状态，页面会提示状态未知，请在宿主机检查：
+
+~~~sh
+sudo systemctl status sub2api-updater
+sudo cat /var/lib/sub2api-updater/status.json
+sh deploy/custom/deploy.sh logs
+~~~
+
+升级器代码安装在 /opt/sub2api-updater/updater.py。将来升级器自身需要更新时，
+在没有活动升级任务时重新执行 install.sh；应用按钮只更新应用镜像。
+宿主机升级器配置在 /etc/sub2api-updater.env（root 600），包括 SUB2API_DEPLOY_DIR。
+公开仓库/镜像可匿名查询。私有仓库可在该文件加入 UPDATE_GITHUB_TOKEN；
+私有 GHCR 可加入 GHCR_USERNAME 和 GHCR_TOKEN，并通过 sudo docker login ghcr.io 配置拉取权限，
+然后 sudo systemctl restart sub2api-updater。不要把这些凭据放入前端或提交到仓库。
+
+## 五、manifest unknown 排查
+
+git ls-remote --sort=-version:refname --tags https://github.com/wklong/sub2api.git
+仅列出 Git 标签；main 是分支，不出现在该列表里。Git 标签并不保证有同名镜像，
+上游遗留标签、未构建提交和缩短的提交哈希尤其不能直接当作 GHCR 标签。
+当前发布规则为 main、sha-<40 位完整提交哈希>，或工作流成功发布的 vX.Y.Z-custom.N。
+版本标签保留开头的 v；提交标签保留 sha- 前缀且使用完整哈希。
+
+先在 Actions 确认 Custom Image Release 成功，再检查：
+
+~~~sh
+docker buildx imagetools inspect ghcr.io/wklong/sub2api:main
+# 将下面占位符替换为 Actions 对应的 40 位完整提交哈希：
+docker buildx imagetools inspect ghcr.io/wklong/sub2api:sha-<完整提交哈希>
+~~~
+
+确认构建确实未发布或清单缺失时，在 Actions 选择 main，勾选 publish_main 后手动运行，
+可补发 main 和对应完整提交镜像。默认手动构建不会上传。
+发布工作流会检查两个镜像标签的摘要和 linux/amd64 平台，清单验证失败则整个发布失败。
+后台升级器也会再次验证 GHCR 镜像；缺失的镜像不会出现在可升级目标中。

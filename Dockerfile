@@ -108,6 +108,10 @@ FROM ${POSTGRES_IMAGE} AS pg-client
 # -----------------------------------------------------------------------------
 FROM ${ALPINE_IMAGE}
 
+ARG COMMIT=docker
+ENV SUB2API_UPDATE_MODE=container
+ENV SUB2API_COMMIT=${COMMIT}
+
 # Labels
 LABEL maintainer="Wei-Shaw <github.com/Wei-Shaw>"
 LABEL description="Sub2API - AI API Gateway Platform"

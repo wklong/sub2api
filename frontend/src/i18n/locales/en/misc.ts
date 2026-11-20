@@ -19,6 +19,16 @@ export default {
 
   // Version Badge
   version: {
+    customTitle: "Custom version update",
+    customCurrent: "Current commit",
+    customTarget: "Target commit",
+    customPublished: "Build time",
+    customUpgrade: "Update to latest custom version",
+    customConfirm: "Update to the commit above? Service will briefly stop. Back up your database first. Failed updates do not automatically roll back the database.",
+    customConfirmButton: "Confirm update",
+    customReconnect: "The connection may drop during the update. This page reconnects automatically.",
+    customStatusUnknown: "Update status is unavailable. Check the host updater before submitting again.",
+    customPhase: {"idle":"No update task","queued":"Queued","pulling":"Pulling image","recreating":"Recreating container","checking":"Checking health","succeeded":"Update succeeded","failed":"Update failed"},
     currentVersion: 'Current Version',
     latestVersion: 'Latest Version',
     upToDate: "You're running the latest version.",

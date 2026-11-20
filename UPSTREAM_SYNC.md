@@ -52,7 +52,7 @@ git push -u origin sync/upstream-vX.Y.Z
 - 自有充值入口、权限、支付回调、余额计算和历史数据兼容性。
 - `deploy/custom/compose.yml` 的继承配置是否仍兼容基础 Compose，新增必填变量是否已记录。
 - Dockerfile 的构建参数、Go/Node/pnpm 版本、镜像架构、数据库主版本及存储路径变化。
-- `.github/workflows/release.yml` 的上游仓库限制是否保留，自有工作流是否仅由 main 推送或自有版本标签上传镜像，手动运行是否仍仅验证构建。
+- `.github/workflows/release.yml` 的上游仓库限制是否保留，自有工作流是否仅由 main 推送或自有版本标签上传镜像，手动运行是否默认仅验证构建、显式补发是否仅允许 main；发布后清单校验是否保留。
 - `.github/workflows/` 中其他新增工作流、权限、外部脚本和发布行为。
 - 新迁移的顺序和兼容性。不要修改已在生产执行的迁移文件。
 
