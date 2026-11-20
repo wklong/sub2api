@@ -339,180 +339,118 @@ curl -sSL https://raw.githubusercontent.com/Wei-Shaw/sub2api/main/deploy/install
 
 ### 方式二：Docker Compose（推荐）
 
-使用 Docker Compose 部署，包含 PostgreSQL 和 Redis 容器。
+使用自有镜像 `ghcr.io/wklong/sub2api`，包含应用、PostgreSQL 和 Redis。
+推送到 `main` 后，GitHub Actions 自动构建并上传 `main` 和
+`sha-<完整提交哈希>` 标签。服务器直接拉取镜像，无需源码构建。
 
 #### 前置条件
 
-- Docker 20.10+
-- Docker Compose v2+
+- Linux x86_64 服务器，已安装 Docker Engine。
+- Docker Compose v2 插件，支持 `up --wait`。
+- GitHub Actions 中的 `Custom Image Release` 已构建并上传成功。
+- 服务器能够访问 GHCR 和 PostgreSQL、Redis 镜像源。
 
-#### 快速开始（一键部署）
+#### 准备部署配置
 
-使用自动化部署脚本快速搭建：
+仅下载部署文件，无需克隆完整源码；保留以下相对目录结构：
 
 ```bash
-# 创建部署目录
-mkdir -p sub2api-deploy && cd sub2api-deploy
+mkdir -p sub2api-deploy/deploy/custom
+cd sub2api-deploy
 
-# 下载并运行部署准备脚本
-curl -sSL https://raw.githubusercontent.com/Wei-Shaw/sub2api/main/deploy/docker-deploy.sh | bash
+# 下载自有仓库的部署配置；固定部署版本时，将 main 替换为对应完整提交哈希或版本标签
+CONFIG_REF=main
+BASE_URL="https://raw.githubusercontent.com/wklong/sub2api/${CONFIG_REF}/deploy"
+curl -fSL "$BASE_URL/docker-compose.yml" -o deploy/docker-compose.yml
+for file in compose.yml deploy.sh .env.example; do
+  curl -fSL "$BASE_URL/custom/$file" -o "deploy/custom/$file" || exit 1
+done
 
-# 启动服务
-docker compose up -d
-
-# 查看日志
-docker compose logs -f sub2api
+cp deploy/custom/.env.example deploy/custom/.env
+chmod 600 deploy/custom/.env
+nano deploy/custom/.env
 ```
 
-**脚本功能：**
-- 下载 `docker-compose.local.yml`（本地保存为 `docker-compose.yml`）和 `.env.example`
-- 自动生成安全凭证（JWT_SECRET、TOTP_ENCRYPTION_KEY、POSTGRES_PASSWORD）
-- 创建 `.env` 文件并填充自动生成的密钥
-- 创建数据目录（使用本地目录，便于备份和迁移）
-- 显示生成的凭证供你记录
+#### 配置镜像版本和凭据
 
-#### 手动部署
+编辑 `deploy/custom/.env`：
 
-如果你希望手动配置：
+```dotenv
+SUB2API_IMAGE=ghcr.io/wklong/sub2api
+# 跟随 main 更新；生产建议改为 sha-<完整提交哈希> 或 vX.Y.Z-custom.N
+SUB2API_VERSION=main
 
-```bash
-# 1. 克隆仓库
-git clone https://github.com/Wei-Shaw/sub2api.git
-cd sub2api/deploy
+POSTGRES_PASSWORD=
+REDIS_PASSWORD=
+JWT_SECRET=
+TOTP_ENCRYPTION_KEY=
 
-# 2. 复制环境配置文件
-cp .env.example .env
-chmod 600 .env
-
-# 3. 编辑配置（生成安全密码）
-nano .env
-```
-
-**`.env` 必须配置项：**
-
-```bash
-# PostgreSQL 密码（必需）
-POSTGRES_PASSWORD=your_secure_password_here
-
-# JWT 密钥（推荐 - 重启后保持用户登录状态）
-JWT_SECRET=your_jwt_secret_here
-
-# TOTP 加密密钥（推荐 - 重启后保留双因素认证）
-TOTP_ENCRYPTION_KEY=your_totp_key_here
-
-# 可选：管理员账号
-# 留空则首次启动时自动生成随机邮箱（登录用户名）和密码，并输出到日志。
-# 请勿使用 admin@example.com 这类可被猜中的值，它们是暴力破解的目标。
+# 首次初始化管理员账号
 ADMIN_EMAIL=
 ADMIN_PASSWORD=
 
-# 可选：自定义端口
+# 默认只允许本机访问，通过 HTTPS 反向代理提供外部访问
+BIND_HOST=127.0.0.1
 SERVER_PORT=8080
 ```
 
-**生成安全密钥：**
+分别运行 `openssl rand -hex 32`，为四个密码和密钥填写不同的随机值。
+管理员密码填写至少 8 字节、不超过 72 字节；管理员配置仅首次初始化生效。
+更新时保持数据库密码、JWT 和 TOTP 密钥不变。
+
+如果 GHCR 包尚未公开，先执行 `docker login ghcr.io -u wklong`，
+交互输入有权读取该包的令牌；公开镜像可匿名拉取。
+
+#### 启动与检查
+
+在 `sub2api-deploy` 目录执行：
+
 ```bash
-# 生成 JWT_SECRET
-openssl rand -hex 32
-
-# 生成 TOTP_ENCRYPTION_KEY
-openssl rand -hex 32
-
-# 生成 POSTGRES_PASSWORD
-openssl rand -hex 32
+sh deploy/custom/deploy.sh check
+sh deploy/custom/deploy.sh up
+sh deploy/custom/deploy.sh status
+sh deploy/custom/deploy.sh logs
 ```
 
-```bash
-# 4. 创建数据目录（本地版）
-mkdir -p data postgres_data redis_data
-
-# 5. 启动所有服务
-# 选项 A：本地目录版（推荐 - 易于迁移）
-docker compose -f docker-compose.local.yml up -d
-
-# 选项 B：命名卷版（简单设置）
-docker compose up -d
-
-# 6. 查看状态
-docker compose -f docker-compose.local.yml ps
-
-# 7. 查看日志
-docker compose -f docker-compose.local.yml logs -f sub2api
-```
-
-#### 部署版本对比
-
-| 版本 | 数据存储 | 迁移便利性 | 适用场景 |
-|------|---------|-----------|---------|
-| **docker-compose.local.yml** | 本地目录 | ✅ 简单（打包整个目录） | 生产环境、频繁备份 |
-| **docker-compose.yml** | 命名卷 | ⚠️ 需要 docker 命令 | 简单设置 |
-
-**推荐：** 使用 `docker-compose.local.yml`（脚本部署）以便更轻松地管理数据。
-
-#### 启用“数据管理”功能（datamanagementd）
-
-如需启用管理后台“数据管理”，需要额外部署宿主机数据管理进程 `datamanagementd`。
-
-关键点：
-
-- 主进程固定探测：`/tmp/sub2api-datamanagement.sock`
-- 只有该 Socket 可连通时，数据管理功能才会开启
-- Docker 场景需将宿主机 Socket 挂载到容器同路径
-
-详细部署步骤见：`deploy/DATAMANAGEMENTD_CN.md`
-
-#### 访问
-
-在浏览器中打开 `http://你的服务器IP:8080`
-
-如果管理员邮箱（登录用户名）或密码是自动生成的，在日志中查找：
-```bash
-docker compose -f docker-compose.local.yml logs sub2api | grep "Generated admin"
-```
+`up` 默认先拉取镜像，再使用 `--no-build` 重建容器并等待健康检查。
+默认监听 `127.0.0.1:8080`，可在服务器本机访问或通过 HTTPS 反向代理访问。
+需要直接通过服务器 IP 访问时，将 `BIND_HOST` 改为 `0.0.0.0`，
+并配置入站规则，再访问 `http://你的服务器IP:8080`。
 
 #### 升级
 
-```bash
-# 拉取最新镜像并重建容器
-docker compose -f docker-compose.local.yml pull
-docker compose -f docker-compose.local.yml up -d
-```
-
-#### 轻松迁移（本地目录版）
-
-使用 `docker-compose.local.yml` 时，可以轻松迁移到新服务器：
+1. 备份数据库、应用数据和 `.env`，记录当前镜像版本。
+2. 将代码推送到 `main`，等待 `Custom Image Release` 成功。
+3. 检查新版本部署配置及新增环境变量；配置有变化时，从对应提交下载更新，
+   保留现有 `.env`。
+4. 使用滚动版本时保持 `SUB2API_VERSION=main`；需要固定版本时，改为
+   `sha-<完整提交哈希>` 或正式版本标签。
+5. 执行以下命令，检查健康状态和关键业务：
 
 ```bash
-# 源服务器
-docker compose -f docker-compose.local.yml down
-cd ..
-tar czf sub2api-complete.tar.gz sub2api-deploy/
-
-# 传输到新服务器
-scp sub2api-complete.tar.gz user@new-server:/path/
-
-# 新服务器
-tar xzf sub2api-complete.tar.gz
-cd sub2api-deploy/
-docker compose -f docker-compose.local.yml up -d
+sh deploy/custom/deploy.sh check
+sh deploy/custom/deploy.sh up
+sh deploy/custom/deploy.sh status
 ```
 
-#### 常用命令
+不要使用后台“在线更新”，它可能下载上游二进制并覆盖自有功能。
+脚本失败不会自动回滚；涉及数据库迁移时，旧镜像不一定兼容新数据库。
 
-```bash
-# 停止所有服务
-docker compose -f docker-compose.local.yml down
+#### 数据持久化与迁移
 
-# 重启
-docker compose -f docker-compose.local.yml restart
+本方案使用命名卷，默认项目名为 `sub2api-custom`，首次部署后保持项目名稳定。
+旧部署的本地目录或其他命名卷不会自动迁入；已有实例应先确认卷名称、
+数据库版本和备份恢复方案。不要执行 `docker compose down -v`。
 
-# 查看所有日志
-docker compose -f docker-compose.local.yml logs -f
+迁移服务器需要备份并恢复 PostgreSQL、应用数据卷及 `.env`；
+只复制部署目录不会包含命名卷数据。完整说明见
+[自有镜像部署手册](deploy/custom/README.md)。
 
-# 删除所有数据（谨慎！）
-docker compose -f docker-compose.local.yml down
-rm -rf data/ postgres_data/ redis_data/
-```
+#### 启用“数据管理”功能（datamanagementd）
+
+如需后台“数据管理”，还需部署宿主机 `datamanagementd`，并将
+`/tmp/sub2api-datamanagement.sock` 挂载到应用容器同路径。
+详细步骤见 [数据管理部署说明](deploy/DATAMANAGEMENTD_CN.md)。
 
 ---
 

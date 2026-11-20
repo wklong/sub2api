@@ -309,168 +309,126 @@ curl -sSL https://raw.githubusercontent.com/Wei-Shaw/sub2api/main/deploy/install
 
 ### 方法2: Docker Compose（推奨）
 
-PostgreSQL と Redis のコンテナを含む Docker Compose でデプロイします。
+独自イメージ `ghcr.io/wklong/sub2api` を使用し、アプリケーション、
+PostgreSQL、Redis をデプロイします。`main` へのプッシュで GitHub Actions が
+イメージをビルドし、更新される `main` タグと固定の
+`sha-<完全なコミットハッシュ>` タグを公開します。
+サーバーではイメージを取得するため、ソースのビルドは不要です。
 
 #### 前提条件
 
-- Docker 20.10+
-- Docker Compose v2+
+- Docker Engine をインストールした Linux x86_64 サーバー。
+- `up --wait` に対応する Docker Compose v2 以降。
+- `Custom Image Release` のビルドとイメージ公開が成功していること。
+- GHCR と PostgreSQL、Redis のイメージレジストリにアクセスできること。
 
-#### クイックスタート（ワンクリックデプロイ）
+#### デプロイファイルの取得
 
-自動デプロイスクリプトを使用して簡単にセットアップできます:
+リポジトリ全体をクローンする必要はありません。相対パスを維持して取得します。
 
 ```bash
-# デプロイ用ディレクトリを作成
-mkdir -p sub2api-deploy && cd sub2api-deploy
+mkdir -p sub2api-deploy/deploy/custom
+cd sub2api-deploy
 
-# デプロイ準備スクリプトをダウンロードして実行
-curl -sSL https://raw.githubusercontent.com/Wei-Shaw/sub2api/main/deploy/docker-deploy.sh | bash
+# バージョンを固定する場合は main を完全なコミットハッシュまたはリリースタグに変更
+CONFIG_REF=main
+BASE_URL="https://raw.githubusercontent.com/wklong/sub2api/${CONFIG_REF}/deploy"
+curl -fSL "$BASE_URL/docker-compose.yml" -o deploy/docker-compose.yml
+for file in compose.yml deploy.sh .env.example; do
+  curl -fSL "$BASE_URL/custom/$file" -o "deploy/custom/$file" || exit 1
+done
 
-# サービスを起動
-docker compose up -d
-
-# ログを表示
-docker compose logs -f sub2api
+cp deploy/custom/.env.example deploy/custom/.env
+chmod 600 deploy/custom/.env
+nano deploy/custom/.env
 ```
 
-**スクリプトの動作内容:**
-- `docker-compose.local.yml`（`docker-compose.yml` として保存）と `.env.example` をダウンロード
-- セキュアな認証情報（JWT_SECRET、TOTP_ENCRYPTION_KEY、POSTGRES_PASSWORD）を自動生成
-- 自動生成されたシークレットで `.env` ファイルを作成
-- データディレクトリを作成（バックアップ・移行が容易なローカルディレクトリを使用）
-- 生成された認証情報を参照用に表示
+#### イメージと認証情報の設定
 
-#### 手動デプロイ
+`deploy/custom/.env` を編集します。
 
-手動でセットアップする場合:
+```dotenv
+SUB2API_IMAGE=ghcr.io/wklong/sub2api
+# main に追従。固定する場合は sha-<完全なコミットハッシュ> または vX.Y.Z-custom.N
+SUB2API_VERSION=main
 
-```bash
-# 1. リポジトリをクローン
-git clone https://github.com/Wei-Shaw/sub2api.git
-cd sub2api/deploy
+POSTGRES_PASSWORD=
+REDIS_PASSWORD=
+JWT_SECRET=
+TOTP_ENCRYPTION_KEY=
 
-# 2. 環境設定ファイルをコピー
-cp .env.example .env
-chmod 600 .env
-
-# 3. 設定を編集（セキュアなパスワードを生成）
-nano .env
-```
-
-**`.env` の必須設定:**
-
-```bash
-# PostgreSQL パスワード（必須）
-POSTGRES_PASSWORD=your_secure_password_here
-
-# JWT シークレット（推奨 - 再起動後もユーザーのログイン状態を保持）
-JWT_SECRET=your_jwt_secret_here
-
-# TOTP 暗号化キー（推奨 - 再起動後も二要素認証を維持）
-TOTP_ENCRYPTION_KEY=your_totp_key_here
-
-# オプション: 管理者アカウント
-# 空欄の場合、初回起動時にランダムなメールアドレス（ログインユーザー名）とパスワードが自動生成され、ログに出力されます。
-# admin@example.com のような推測されやすい値は総当たり攻撃の標的になるため避けてください。
+# 初回初期化時のみ使用する管理者アカウント
 ADMIN_EMAIL=
 ADMIN_PASSWORD=
 
-# オプション: カスタムポート
+# デフォルトはローカル接続のみ。外部公開には HTTPS リバースプロキシを使用
+BIND_HOST=127.0.0.1
 SERVER_PORT=8080
 ```
 
-**セキュアなシークレットの生成方法:**
+`openssl rand -hex 32` を個別に実行し、4つのパスワードとキーにそれぞれ
+異なる値を設定してください。管理者パスワードは 8～72 バイトで設定します。
+管理者設定は初回初期化時のみ有効です。更新時はデータベースのパスワード、
+JWT キー、TOTP キーを変更しないでください。
+
+GHCR パッケージが非公開の場合、`docker login ghcr.io -u wklong` を実行し、
+読み取り権限のあるトークンを対話形式で入力します。公開イメージは匿名で取得できます。
+
+#### 起動と確認
+
+`sub2api-deploy` ディレクトリで実行します。
+
 ```bash
-# JWT_SECRET を生成
-openssl rand -hex 32
-
-# TOTP_ENCRYPTION_KEY を生成
-openssl rand -hex 32
-
-# POSTGRES_PASSWORD を生成
-openssl rand -hex 32
+sh deploy/custom/deploy.sh check
+sh deploy/custom/deploy.sh up
+sh deploy/custom/deploy.sh status
+sh deploy/custom/deploy.sh logs
 ```
 
-```bash
-# 4. データディレクトリを作成（ローカルバージョンの場合）
-mkdir -p data postgres_data redis_data
-
-# 5. すべてのサービスを起動
-# オプション A: ローカルディレクトリバージョン（推奨 - 移行が容易）
-docker compose -f docker-compose.local.yml up -d
-
-# オプション B: 名前付きボリュームバージョン（シンプルなセットアップ）
-docker compose up -d
-
-# 6. ステータスを確認
-docker compose -f docker-compose.local.yml ps
-
-# 7. ログを表示
-docker compose -f docker-compose.local.yml logs -f sub2api
-```
-
-#### デプロイバージョン
-
-| バージョン | データストレージ | 移行 | 推奨用途 |
-|---------|-------------|-----------|----------|
-| **docker-compose.local.yml** | ローカルディレクトリ | ✅ 容易（ディレクトリ全体を tar） | 本番環境、頻繁なバックアップ |
-| **docker-compose.yml** | 名前付きボリューム | ⚠️ docker コマンドが必要 | シンプルなセットアップ |
-
-**推奨:** データ管理が容易な `docker-compose.local.yml`（スクリプトによるデプロイ）を使用してください。
-
-#### アクセス
-
-ブラウザで `http://YOUR_SERVER_IP:8080` を開いてください。
-
-管理者メールアドレス（ログインユーザー名）またはパスワードが自動生成された場合は、ログで確認できます:
-```bash
-docker compose -f docker-compose.local.yml logs sub2api | grep "Generated admin"
-```
+`up` はデフォルトでイメージを取得し、`--no-build` でコンテナを再作成して
+ヘルスチェックを待機します。待受アドレスは `127.0.0.1:8080` です。
+サーバー内または HTTPS リバースプロキシ経由でアクセスしてください。
+直接公開する場合は `BIND_HOST=0.0.0.0` に変更し、受信ルールを設定したうえで
+`http://サーバーIP:8080` にアクセスします。
 
 #### アップグレード
 
-```bash
-# 最新イメージをプルしてコンテナを再作成
-docker compose -f docker-compose.local.yml pull
-docker compose -f docker-compose.local.yml up -d
-```
-
-#### 簡単な移行（ローカルディレクトリバージョン）
-
-`docker-compose.local.yml` を使用している場合、新しいサーバーへの移行が簡単です:
+1. PostgreSQL、アプリケーションデータ、`.env` をバックアップし、現在のイメージを記録します。
+2. `main` にプッシュし、`Custom Image Release` の成功を待ちます。
+3. 設定や環境変数の変更を確認します。変更されたデプロイファイルは対応するコミットから
+   取得し、既存の `.env` を保持します。
+4. 継続的に更新する場合は `SUB2API_VERSION=main` を維持します。固定する場合は
+   `sha-<完全なコミットハッシュ>` または独自リリースタグに変更します。
+5. 以下を実行し、ヘルスチェックと主要機能を確認します。
 
 ```bash
-# 移行元サーバーにて
-docker compose -f docker-compose.local.yml down
-cd ..
-tar czf sub2api-complete.tar.gz sub2api-deploy/
-
-# 新しいサーバーに転送
-scp sub2api-complete.tar.gz user@new-server:/path/
-
-# 移行先サーバーにて
-tar xzf sub2api-complete.tar.gz
-cd sub2api-deploy/
-docker compose -f docker-compose.local.yml up -d
+sh deploy/custom/deploy.sh check
+sh deploy/custom/deploy.sh up
+sh deploy/custom/deploy.sh status
 ```
 
-#### よく使うコマンド
+管理画面のオンライン更新は使用しないでください。上流のバイナリが導入され、
+独自機能が上書きされる可能性があります。失敗時の自動ロールバックはありません。
+データベース移行後は古いイメージと互換性がない場合があります。
 
-```bash
-# すべてのサービスを停止
-docker compose -f docker-compose.local.yml down
+#### データの永続化と移行
 
-# 再起動
-docker compose -f docker-compose.local.yml restart
+本構成は名前付きボリュームを使用し、デフォルトのプロジェクト名は
+`sub2api-custom` です。初回デプロイ後はプロジェクト名を維持してください。
+既存のローカルディレクトリや別のボリュームからの自動移行は行いません。
+既存環境の移行前に、ボリューム名、データベースのバージョン、バックアップと
+復元手順を確認してください。`docker compose down -v` は実行しないでください。
 
-# すべてのログを表示
-docker compose -f docker-compose.local.yml logs -f
+サーバー移行では PostgreSQL、アプリケーションのデータボリューム、
+`.env` のバックアップと復元が必要です。デプロイディレクトリのコピーだけでは
+ボリュームのデータは移行されません。
+詳細は[独自イメージのデプロイ手順](deploy/custom/README.md)を参照してください。
 
-# すべてのデータを削除（注意！）
-docker compose -f docker-compose.local.yml down
-rm -rf data/ postgres_data/ redis_data/
-```
+#### データ管理機能（datamanagementd）の有効化
+
+データ管理を有効にするには、ホストに `datamanagementd` を配置し、
+`/tmp/sub2api-datamanagement.sock` をアプリケーションコンテナの同じパスへ
+マウントします。詳細は[デプロイ手順](deploy/DATAMANAGEMENTD_CN.md)を参照してください。
 
 ---
 

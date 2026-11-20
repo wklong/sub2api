@@ -313,168 +313,124 @@ curl -sSL https://raw.githubusercontent.com/Wei-Shaw/sub2api/main/deploy/install
 
 ### Method 2: Docker Compose (Recommended)
 
-Deploy with Docker Compose, including PostgreSQL and Redis containers.
+Deploy the application, PostgreSQL, and Redis using the fork's image,
+`ghcr.io/wklong/sub2api`. Each push to `main` triggers GitHub Actions to
+build and publish the rolling `main` tag and a fixed `sha-<full-commit-hash>`
+tag. The server pulls the image without compiling source code.
 
 #### Prerequisites
 
-- Docker 20.10+
-- Docker Compose v2+
+- A Linux x86_64 server with Docker Engine.
+- Docker Compose v2 or later with support for `up --wait`.
+- A successful `Custom Image Release` build and image upload.
+- Network access to GHCR and the PostgreSQL and Redis image registries.
 
-#### Quick Start (One-Click Deployment)
+#### Download Deployment Files
 
-Use the automated deployment script for easy setup:
+Download only the deployment files, preserving their relative paths:
 
 ```bash
-# Create deployment directory
-mkdir -p sub2api-deploy && cd sub2api-deploy
+mkdir -p sub2api-deploy/deploy/custom
+cd sub2api-deploy
 
-# Download and run deployment preparation script
-curl -sSL https://raw.githubusercontent.com/Wei-Shaw/sub2api/main/deploy/docker-deploy.sh | bash
+# For a fixed release, replace main with its full commit hash or release tag
+CONFIG_REF=main
+BASE_URL="https://raw.githubusercontent.com/wklong/sub2api/${CONFIG_REF}/deploy"
+curl -fSL "$BASE_URL/docker-compose.yml" -o deploy/docker-compose.yml
+for file in compose.yml deploy.sh .env.example; do
+  curl -fSL "$BASE_URL/custom/$file" -o "deploy/custom/$file" || exit 1
+done
 
-# Start services
-docker compose up -d
-
-# View logs
-docker compose logs -f sub2api
+cp deploy/custom/.env.example deploy/custom/.env
+chmod 600 deploy/custom/.env
+nano deploy/custom/.env
 ```
 
-**What the script does:**
-- Downloads `docker-compose.local.yml` (saved as `docker-compose.yml`) and `.env.example`
-- Generates secure credentials (JWT_SECRET, TOTP_ENCRYPTION_KEY, POSTGRES_PASSWORD)
-- Creates `.env` file with auto-generated secrets
-- Creates data directories (uses local directories for easy backup/migration)
-- Displays generated credentials for your reference
+#### Configure the Image and Credentials
 
-#### Manual Deployment
+Edit `deploy/custom/.env`:
 
-If you prefer manual setup:
+```dotenv
+SUB2API_IMAGE=ghcr.io/wklong/sub2api
+# Rolling main build; use sha-<full-commit-hash> or vX.Y.Z-custom.N to pin a release
+SUB2API_VERSION=main
 
-```bash
-# 1. Clone the repository
-git clone https://github.com/Wei-Shaw/sub2api.git
-cd sub2api/deploy
+POSTGRES_PASSWORD=
+REDIS_PASSWORD=
+JWT_SECRET=
+TOTP_ENCRYPTION_KEY=
 
-# 2. Copy environment configuration
-cp .env.example .env
-chmod 600 .env
-
-# 3. Edit configuration (generate secure passwords)
-nano .env
-```
-
-**Required configuration in `.env`:**
-
-```bash
-# PostgreSQL password (REQUIRED)
-POSTGRES_PASSWORD=your_secure_password_here
-
-# JWT Secret (RECOMMENDED - keeps users logged in after restart)
-JWT_SECRET=your_jwt_secret_here
-
-# TOTP Encryption Key (RECOMMENDED - preserves 2FA after restart)
-TOTP_ENCRYPTION_KEY=your_totp_key_here
-
-# Optional: Admin account
-# Leave empty to auto-generate a random email (login username) and password, shown in logs on first startup.
-# Avoid guessable values such as admin@example.com: they are brute-force targets.
+# Administrator account, used only during initial setup
 ADMIN_EMAIL=
 ADMIN_PASSWORD=
 
-# Optional: Custom port
+# Local access by default; expose through an HTTPS reverse proxy
+BIND_HOST=127.0.0.1
 SERVER_PORT=8080
 ```
 
-**Generate secure secrets:**
+Run `openssl rand -hex 32` separately for each of the four passwords and keys
+and enter distinct values. Set an administrator password of 8–72 bytes.
+Administrator settings apply only during initial setup. Keep database passwords,
+JWT and TOTP keys unchanged during upgrades.
+
+If the GHCR package is private, run `docker login ghcr.io -u wklong` and
+enter a token with package read access interactively. Public images allow anonymous pulls.
+
+#### Start and Verify
+
+Run from `sub2api-deploy`:
+
 ```bash
-# Generate JWT_SECRET
-openssl rand -hex 32
-
-# Generate TOTP_ENCRYPTION_KEY
-openssl rand -hex 32
-
-# Generate POSTGRES_PASSWORD
-openssl rand -hex 32
+sh deploy/custom/deploy.sh check
+sh deploy/custom/deploy.sh up
+sh deploy/custom/deploy.sh status
+sh deploy/custom/deploy.sh logs
 ```
 
-```bash
-# 4. Create data directories (for local version)
-mkdir -p data postgres_data redis_data
-
-# 5. Start all services
-# Option A: Local directory version (recommended - easy migration)
-docker compose -f docker-compose.local.yml up -d
-
-# Option B: Named volumes version (simple setup)
-docker compose up -d
-
-# 6. Check status
-docker compose -f docker-compose.local.yml ps
-
-# 7. View logs
-docker compose -f docker-compose.local.yml logs -f sub2api
-```
-
-#### Deployment Versions
-
-| Version | Data Storage | Migration | Best For |
-|---------|-------------|-----------|----------|
-| **docker-compose.local.yml** | Local directories | ✅ Easy (tar entire directory) | Production, frequent backups |
-| **docker-compose.yml** | Named volumes | ⚠️ Requires docker commands | Simple setup |
-
-**Recommendation:** Use `docker-compose.local.yml` (deployed by script) for easier data management.
-
-#### Access
-
-Open `http://YOUR_SERVER_IP:8080` in your browser.
-
-If the admin email (login username) or password was auto-generated, find them in logs:
-```bash
-docker compose -f docker-compose.local.yml logs sub2api | grep "Generated admin"
-```
+By default, `up` pulls images, recreates containers with `--no-build`, and
+waits for health checks. The application listens on `127.0.0.1:8080`.
+Access it locally or through an HTTPS reverse proxy. For direct access,
+set `BIND_HOST=0.0.0.0`, configure inbound firewall rules, and visit
+`http://YOUR_SERVER_IP:8080`.
 
 #### Upgrade
 
-```bash
-# Pull latest image and recreate container
-docker compose -f docker-compose.local.yml pull
-docker compose -f docker-compose.local.yml up -d
-```
-
-#### Easy Migration (Local Directory Version)
-
-When using `docker-compose.local.yml`, migrate to a new server easily:
+1. Back up PostgreSQL, application data, and `.env`; record the current image version.
+2. Push changes to `main` and wait for `Custom Image Release` to succeed.
+3. Review deployment configuration and new environment variables. Download changed
+   files from the matching commit while preserving the existing `.env`.
+4. Keep `SUB2API_VERSION=main` for rolling updates, or select
+   `sha-<full-commit-hash>` or a custom release tag for a fixed version.
+5. Run the commands below and verify health and critical application functions:
 
 ```bash
-# On source server
-docker compose -f docker-compose.local.yml down
-cd ..
-tar czf sub2api-complete.tar.gz sub2api-deploy/
-
-# Transfer to new server
-scp sub2api-complete.tar.gz user@new-server:/path/
-
-# On new server
-tar xzf sub2api-complete.tar.gz
-cd sub2api-deploy/
-docker compose -f docker-compose.local.yml up -d
+sh deploy/custom/deploy.sh check
+sh deploy/custom/deploy.sh up
+sh deploy/custom/deploy.sh status
 ```
 
-#### Useful Commands
+Do not use the admin panel's online updater: it may install upstream binaries
+and overwrite custom features. Failed deployments do not automatically roll back;
+an old image may be incompatible after database migrations.
 
-```bash
-# Stop all services
-docker compose -f docker-compose.local.yml down
+#### Persistent Data and Migration
 
-# Restart
-docker compose -f docker-compose.local.yml restart
+This deployment uses named volumes under the default project name
+`sub2api-custom`. Keep the project name stable after initial deployment.
+Existing bind mounts or other named volumes are not migrated automatically.
+Check volume names, database versions, and the backup/restore procedure before
+migrating an existing installation. Do not run `docker compose down -v`.
 
-# View all logs
-docker compose -f docker-compose.local.yml logs -f
+Moving servers requires backing up and restoring PostgreSQL, the application
+data volume, and `.env`. Copying deployment files alone does not include volume data.
+See the [custom image deployment guide](deploy/custom/README.md) for details.
 
-# Remove all data (caution!)
-docker compose -f docker-compose.local.yml down
-rm -rf data/ postgres_data/ redis_data/
-```
+#### Enable Data Management (datamanagementd)
+
+To enable data management, deploy `datamanagementd` on the host and mount
+`/tmp/sub2api-datamanagement.sock` at the same path inside the application
+container. See the [deployment instructions](deploy/DATAMANAGEMENTD_CN.md).
 
 ---
 
