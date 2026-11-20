@@ -65,8 +65,9 @@
 或镜像摘要，不依赖 `latest`，不移动或复用已发布标签。自有发布流程推送到：
 `ghcr.io/wklong/sub2api`。
 
-上游仓库的在线更新逻辑可能下载 `Wei-Shaw/sub2api` 的二进制，不能用于自有部署。部署和升级统一按
-[deploy/custom/README.md](deploy/custom/README.md) 重新拉取自有镜像；不要执行 `docker compose down -v`。
+旧版上游二进制在线更新不能用于自有部署。新版容器升级通过固定用途的宿主机升级器安装自有镜像，
+应用不得持有 Docker socket。部署、后台升级器安装及恢复统一按
+[deploy/custom/README.md](deploy/custom/README.md) 操作；不要执行 `docker compose down -v`。
 
 ## 验证要求
 

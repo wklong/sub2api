@@ -26,9 +26,19 @@ docker compose version >/dev/null
 
 # 不执行 source .env，避免把配置值作为 Shell 代码运行。
 compose() {
-    docker compose --project-directory "$task_dir" --env-file "$task_dir/.env" \
-        -f "$task_dir/compose.yml" "$@"
+    if [ -n "$online_override" ]; then
+        docker compose --project-directory "$task_dir" --env-file "$task_dir/.env" \
+            -f "$task_dir/compose.yml" -f "$online_override" "$@"
+    else
+        docker compose --project-directory "$task_dir" --env-file "$task_dir/.env" \
+            -f "$task_dir/compose.yml" "$@"
+    fi
 }
+
+online_override=
+if [ -f "$task_dir/online-image.json" ]; then
+    online_override="$task_dir/online-image.json"
+fi
 
 pull_images=${PULL_IMAGES:-true}
 case "$pull_images" in
@@ -42,7 +52,11 @@ case "$action" in
     check) printf '%s\n' 'Compose 配置检查通过。' ;;
     up)
         if [ "$pull_images" = true ]; then
-            compose pull
+            if ! compose pull sub2api; then
+                printf '%s\n' '应用镜像拉取失败，当前服务未被重建。请核对 GHCR 包权限及实际发布标签；Git 标签列表不等于镜像列表。提交镜像必须使用 sha-<40位完整提交哈希>，main 需要等待 Custom Image Release 发布成功。' >&2
+                exit 1
+            fi
+            compose pull postgres redis
         fi
         compose up -d --no-build --wait --wait-timeout 300
         compose ps

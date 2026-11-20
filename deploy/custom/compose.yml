@@ -8,7 +8,10 @@ services:
       service: sub2api
     image: ${SUB2API_IMAGE:-ghcr.io/wklong/sub2api}:${SUB2API_VERSION:?请设置自己的镜像版本}
     container_name: ${COMPOSE_PROJECT_NAME:-sub2api-custom}-app
+    volumes:
+      - /run/sub2api-updater:/run/sub2api-updater:ro
     environment:
+      SUB2API_UPDATE_MODE: container
       JWT_SECRET: ${JWT_SECRET:?请设置固定的 JWT_SECRET}
       TOTP_ENCRYPTION_KEY: ${TOTP_ENCRYPTION_KEY:?请设置固定的 TOTP_ENCRYPTION_KEY}
       REDIS_PASSWORD: ${REDIS_PASSWORD:?请设置 REDIS_PASSWORD}

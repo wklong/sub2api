@@ -165,3 +165,7 @@ issues/
 .vite/
 # 本地闭源插件开发目录及构建产物不进入 Sub2API 仓库
 /plugins/
+
+# 宿主机在线升级产生的镜像覆盖配置和 Python 缓存
+deploy/custom/online-image.json
+deploy/custom/updater/__pycache__/

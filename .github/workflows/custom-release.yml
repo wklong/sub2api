@@ -6,8 +6,13 @@ on:
       - main
     tags:
       - 'v*-custom.*'
-  # 从所选分支验证构建，不推送镜像；main 推送和自有版本标签触发上传。
+  # 默认手动构建不上传；main 可显式补发，main 推送和自有版本标签自动上传。
   workflow_dispatch:
+    inputs:
+      publish_main:
+        description: 重新发布 main 镜像（仅 main 分支允许，默认仅验证构建）
+        type: boolean
+        default: false
 
 concurrency:
   group: custom-image-${{ github.ref }}
@@ -40,13 +45,14 @@ jobs:
           REF_TYPE: ${{ github.ref_type }}
           REF_NAME: ${{ github.ref_name }}
           SOURCE_SHA: ${{ github.sha }}
+          PUBLISH_MAIN: ${{ inputs.publish_main }}
         run: |
           set -euo pipefail
           image="ghcr.io/${REPOSITORY,,}"
           publish=false
           tag="sha-${SOURCE_SHA}"
           version="0.0.0-dev.${SOURCE_SHA:0:12}"
-          if [[ "$EVENT_NAME" == push && "$REF_TYPE" == branch && "$REF_NAME" == main ]]; then
+          if [[ "$REF_TYPE" == branch && "$REF_NAME" == main ]] && { [[ "$EVENT_NAME" == push ]] || [[ "$EVENT_NAME" == workflow_dispatch && "$PUBLISH_MAIN" == true ]]; }; then
             publish=true
             tag=main
           elif [[ "$EVENT_NAME" == push && "$REF_TYPE" == tag ]]; then
@@ -83,6 +89,8 @@ jobs:
         run: |
           set -euo pipefail
           sh -n deploy/custom/deploy.sh
+          sh -n deploy/custom/updater/install.sh
+          python3 -m unittest discover -s deploy/custom/updater -v
           SUB2API_VERSION=v0.0.0-custom.1 \
           POSTGRES_PASSWORD=ci-placeholder REDIS_PASSWORD=ci-placeholder \
           JWT_SECRET=ci-placeholder TOTP_ENCRYPTION_KEY=ci-placeholder \
@@ -126,6 +134,33 @@ jobs:
             org.opencontainers.image.created=${{ steps.release.outputs.date }}
           cache-from: type=gha,scope=custom-amd64
           cache-to: type=gha,mode=max,scope=custom-amd64
+
+      - name: 验证发布的镜像清单
+        if: steps.release.outputs.publish == 'true'
+        shell: bash
+        env:
+          IMAGE: ${{ steps.release.outputs.image }}
+          TAG: ${{ steps.release.outputs.tag }}
+          COMMIT: ${{ github.sha }}
+          EXPECTED: ${{ steps.build.outputs.digest }}
+        run: |
+          set -euo pipefail
+          for ref in "$IMAGE:$TAG" "$IMAGE:sha-$COMMIT"; do
+            ready=false
+            for attempt in 1 2 3 4 5; do
+              if docker buildx imagetools inspect "$ref" --format '{{json .Manifest}}' > /tmp/custom-manifest.json; then
+                if jq -e --arg digest "$EXPECTED" '(.digest == $digest) and any(.manifests[]; .platform.os == "linux" and .platform.architecture == "amd64")' /tmp/custom-manifest.json >/dev/null; then
+                  ready=true
+                  break
+                fi
+              fi
+              sleep 5
+            done
+            if [[ "$ready" != true ]]; then
+              echo "::error::镜像清单缺失或摘要不匹配：$ref"
+              exit 1
+            fi
+          done
 
       - name: 输出构建结果
         shell: bash

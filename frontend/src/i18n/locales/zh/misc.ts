@@ -19,6 +19,16 @@ export default {
 
   // Version Badge
   version: {
+    customTitle: "自有版本升级",
+    customCurrent: "当前提交",
+    customTarget: "目标提交",
+    customPublished: "构建时间",
+    customUpgrade: "升级到最新自有版本",
+    customConfirm: "确认升级到以上提交？应用会短暂中断，请先完成数据库备份。升级失败时不会自动回退数据库。",
+    customConfirmButton: "确认升级",
+    customReconnect: "升级期间连接可能中断，页面会自动重连。",
+    customStatusUnknown: "暂时无法查询升级状态，请检查宿主机升级服务，勿重复提交。",
+    customPhase: {"idle":"尚无升级任务","queued":"已排队","pulling":"拉取镜像中","recreating":"重建容器中","checking":"检查服务健康","succeeded":"升级成功","failed":"升级失败"},
     currentVersion: '当前版本',
     latestVersion: '最新版本',
     upToDate: '已是最新版本',
